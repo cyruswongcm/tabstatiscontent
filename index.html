@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Tableau Dashboards</title>
+<style>
+  body {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-around;
+  }
+  iframe {
+    width: 48%;
+    height: 400px;
+    margin-top: 20px;
+    border: 1px solid #ccc;
+  }
+</style>
+</head>
+<body>
+ <script type='module' src='https://dub01.online.tableau.com/javascripts/api/tableau.embedding.3.latest.min.js'></script><tableau-viz id='tableau-viz' src='https://dub01.online.tableau.com/t/cyruswong/views/Superstore/Overview' width='1600' height='1033' hide-tabs toolbar='bottom' ></tableau-viz>
+
+  <script type='module' src='https://dub01.online.tableau.com/javascripts/api/tableau.embedding.3.latest.min.js'></script><tableau-viz id='tableau-viz1' src='https://dub01.online.tableau.com/t/cyruswong/views/Superstore/Overview?:device=phone' width='1600' height='1033' hide-tabs toolbar='hidden' device='phone'></tableau-viz>
+  
+</body>
+</html>
