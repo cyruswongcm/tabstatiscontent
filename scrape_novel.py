@@ -88,69 +88,47 @@ def get(session: requests.Session, url: str) -> requests.Response:
 
 # ── Index page parsing ────────────────────────────────────────────────────────
 
-# Selectors tried in order to find the chapter list container
-_INDEX_SELECTORS = [
-    "#chapter-list", ".chapter-list", "#list", ".list",
-    "#catalog", ".catalog", "#chapters", ".chapters",
-    ".book-catalog", "#book-list", "ul.chapter",
-]
-
 def discover_chapters(session: requests.Session, index_url: str) -> list[tuple[str, str]]:
     """
     Fetch the book's index page and return an ordered list of (title, url) for each chapter.
+    Handles both root-level /{id}.html and nested /{slug}/{id}/ URL patterns.
     """
     print(f"[*] Fetching index: {index_url}")
     r = get(session, index_url)
     soup = BeautifulSoup(r.text, "lxml")
 
-    # Derive the book title from <title> or <h1>
-    book_title_tag = soup.find("h1") or soup.find("title")
-    book_title = book_title_tag.get_text(strip=True) if book_title_tag else "Unknown"
+    index_parsed = urlparse(index_url)
+    seen: set[str] = set()
+    unique: list[tuple[str, str]] = []
 
-    links: list[tuple[str, str]] = []
-
-    # Try known container selectors first
-    container = None
-    for sel in _INDEX_SELECTORS:
-        container = soup.select_one(sel)
-        if container:
-            break
-
-    if container:
-        anchors = container.find_all("a", href=True)
-    else:
-        # Fallback: collect all <a> whose href looks like a chapter link
-        anchors = soup.find_all("a", href=True)
-
-    base = index_url.rstrip("/")
-    slug = urlparse(index_url).path.strip("/")
-
-    for a in anchors:
+    for a in soup.find_all("a", href=True):
         href = a["href"].strip()
         text = a.get_text(strip=True)
         if not text or not href:
             continue
+
         full_url = urljoin(index_url, href)
         parsed   = urlparse(full_url)
-        # Keep only links that stay on the same domain and look like chapter paths
-        if parsed.netloc != urlparse(index_url).netloc:
-            continue
-        path = parsed.path
-        # Must contain the book slug or a numeric ID segment
-        if slug not in path and not re.search(r"/\d+", path):
-            continue
-        # Skip if it's the index page itself
-        if path.rstrip("/") == urlparse(index_url).path.rstrip("/"):
-            continue
-        links.append((text, full_url))
 
-    # Deduplicate while preserving order
-    seen: set[str] = set()
-    unique: list[tuple[str, str]] = []
-    for title, url in links:
-        if url not in seen:
-            seen.add(url)
-            unique.append((title, url))
+        # Same domain only
+        if parsed.netloc != index_parsed.netloc:
+            continue
+
+        path = parsed.path
+
+        # Skip the index page itself
+        if path.rstrip("/") == index_parsed.path.rstrip("/"):
+            continue
+
+        # Chapter URLs contain a run of 4+ digits after a slash:
+        #   /132155.html  /taifengyan/132155.html  /read/177051/
+        # Navigation slugs like /chunai2/ only have 1 digit — excluded.
+        if not re.search(r"/\d{4,}", path):
+            continue
+
+        if full_url not in seen:
+            seen.add(full_url)
+            unique.append((text, full_url))
 
     if not unique:
         raise RuntimeError(
@@ -158,7 +136,7 @@ def discover_chapters(session: requests.Session, index_url: str) -> list[tuple[s
             "The site may be blocking this IP — run locally."
         )
 
-    print(f"[*] Found {len(unique)} chapters for: {book_title}")
+    print(f"[*] Found {len(unique)} chapters")
     return unique
 
 # ── Chapter fetching ──────────────────────────────────────────────────────────
