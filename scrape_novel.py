@@ -143,6 +143,14 @@ def discover_chapters(session: requests.Session, index_url: str) -> list[tuple[s
 def parse_chapter(html: str, fallback_title: str) -> tuple[str, str]:
     soup = BeautifulSoup(html, "lxml")
 
+    # Strip comments, share buttons, and sidebar noise before extraction
+    for sel in ["#postcomments", ".postcomments", "#respond", ".comments-respond",
+                ".comt", ".article-actions", ".shares", ".sidebar", ".article-meta"]:
+        for tag in soup.select(sel):
+            tag.decompose()
+    for tag in soup.find_all("div", id=lambda x: x and x.startswith("div-comment-")):
+        tag.decompose()
+
     title = None
     for sel in ["h1.title", "h1", ".chapter-title", ".title", "#chapter-title"]:
         tag = soup.select_one(sel)
@@ -153,8 +161,10 @@ def parse_chapter(html: str, fallback_title: str) -> tuple[str, str]:
         t = soup.find("title")
         title = t.get_text(strip=True) if t else fallback_title
 
+    # article.article-content is this site's exact content container
     body = None
     for sel in [
+        "article.article-content", ".article-content",
         "#chapter-content", "#content", ".chapter-content",
         ".content", "#article", ".read-content", "article",
     ]:
@@ -163,7 +173,7 @@ def parse_chapter(html: str, fallback_title: str) -> tuple[str, str]:
             for noise in tag.find_all(["script", "style", "ins", "a"]):
                 noise.decompose()
             body = tag.get_text("\n", strip=True)
-            if len(body) > 100:
+            if len(body) > 50:
                 break
 
     if not body:
@@ -192,7 +202,11 @@ def load_or_fetch(
     if cache_file.exists():
         raw   = cache_file.read_text(encoding="utf-8")
         parts = raw.split("\n", 1)
-        return parts[0].lstrip("# ").strip(), (parts[1].strip() if len(parts) > 1 else "")
+        title = parts[0].lstrip("# ").strip()
+        body  = parts[1].strip() if len(parts) > 1 else ""
+        if body:  # skip cache if body was empty (e.g. from a garbled prior run)
+            return title, body
+        print(f"    (cache empty, re-fetching)")
 
     r          = get(session, chapter_url)
     title, body = parse_chapter(r.text, fallback_title)

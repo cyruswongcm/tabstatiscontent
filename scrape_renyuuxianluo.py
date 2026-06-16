@@ -97,6 +97,14 @@ def parse_chapter(html: str, chapter_id: int) -> tuple[str, str]:
     """
     soup = BeautifulSoup(html, "lxml")
 
+    # Strip comments, share buttons, and sidebar noise before extraction
+    for sel in ["#postcomments", ".postcomments", "#respond", ".comments-respond",
+                ".comt", ".article-actions", ".shares", ".sidebar", ".article-meta"]:
+        for tag in soup.select(sel):
+            tag.decompose()
+    for tag in soup.find_all("div", id=lambda x: x and x.startswith("div-comment-")):
+        tag.decompose()
+
     # ── Title ──
     title = None
     for sel in ["h1.title", "h1", ".chapter-title", ".title", "#chapter-title"]:
@@ -109,18 +117,19 @@ def parse_chapter(html: str, chapter_id: int) -> tuple[str, str]:
         title = title_tag.get_text(strip=True) if title_tag else f"第{chapter_id}章"
 
     # ── Body ──
+    # article.article-content is this site's exact content container
     body = None
     for sel in [
+        "article.article-content", ".article-content",
         "#chapter-content", "#content", ".chapter-content",
         ".content", "#article", ".read-content", "article",
     ]:
         tag = soup.select_one(sel)
         if tag:
-            # Remove script/style noise
             for noise in tag.find_all(["script", "style", "ins", "a"]):
                 noise.decompose()
             body = tag.get_text("\n", strip=True)
-            if len(body) > 100:
+            if len(body) > 50:
                 break
 
     if not body:
@@ -162,7 +171,9 @@ def load_or_fetch(
         lines = raw.split("\n", 1)
         title = lines[0].lstrip("# ").strip()
         body  = lines[1].strip() if len(lines) > 1 else ""
-        return title, body
+        if body:  # skip cache if body was empty (e.g. from a garbled prior run)
+            return title, body
+        print(f"    (cache empty, re-fetching {chapter_id})")
 
     title, body = fetch_chapter(session, url_pattern, chapter_id)
 
